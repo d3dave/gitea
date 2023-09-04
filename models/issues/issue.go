@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"regexp"
 
+	"code.gitea.io/gitea/github"
 	"code.gitea.io/gitea/models/db"
 	project_model "code.gitea.io/gitea/models/project"
 	repo_model "code.gitea.io/gitea/models/repo"
@@ -19,6 +20,7 @@ import (
 	api "code.gitea.io/gitea/modules/structs"
 	"code.gitea.io/gitea/modules/timeutil"
 	"code.gitea.io/gitea/modules/util"
+	"github.com/shurcooL/githubv4"
 
 	"xorm.io/builder"
 )
@@ -205,7 +207,11 @@ func (issue *Issue) GetPullRequest() (pr *PullRequest, err error) {
 		return nil, fmt.Errorf("Issue is not a pull request")
 	}
 
-	pr, err = GetPullRequestByIssueID(db.DefaultContext, issue.ID)
+	if issue.Repo.IsMirror {
+		pr, err = GetGithubPullRequestByIssue(context.Background(), issue)
+	} else {
+		pr, err = GetPullRequestByIssueID(db.DefaultContext, issue.ID)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -233,7 +239,11 @@ func (issue *Issue) LoadPoster(ctx context.Context) (err error) {
 func (issue *Issue) LoadPullRequest(ctx context.Context) (err error) {
 	if issue.IsPull {
 		if issue.PullRequest == nil && issue.ID != 0 {
-			issue.PullRequest, err = GetPullRequestByIssueID(ctx, issue.ID)
+			if issue.Repo.IsMirror {
+				issue.PullRequest, err = GetGithubPullRequestByIssue(ctx, issue)
+			} else {
+				issue.PullRequest, err = GetPullRequestByIssueID(ctx, issue.ID)
+			}
 			if err != nil {
 				if IsErrPullRequestNotExist(err) {
 					return err
@@ -500,6 +510,57 @@ func (issue *Issue) GetLastEventLabelFake() string {
 		return "repo.issues.closed_by_fake"
 	}
 	return "repo.issues.opened_by_fake"
+}
+
+func GetGithubIssueByIndex(ctx context.Context, repo *repo_model.Repository, index int64) (*Issue, error) {
+	if index < 1 {
+		return nil, ErrIssueNotExist{}
+	}
+
+	repoOwner, repoName, err := github.GetMirrorOwnerAndName(ctx, repo)
+	if err != nil {
+		return nil, err
+	}
+
+	var q struct {
+		Repository struct {
+			IssueOrPullRequest struct {
+				Typename string `graphql:"__typename"`
+				Issue    struct {
+					Title     githubv4.String
+					CreatedAt githubv4.DateTime
+					UpdatedAt githubv4.DateTime
+					ClosedAt  githubv4.DateTime
+				} `graphql:"... on Issue"`
+				PullRequest struct {
+					Title     githubv4.String
+					CreatedAt githubv4.DateTime
+					UpdatedAt githubv4.DateTime
+					ClosedAt  githubv4.DateTime
+				} `graphql:"... on PullRequest"`
+			} `graphql:"issueOrPullRequest(number:$issueOrPrNumber)"`
+		} `graphql:"repository(owner:$repoOwner,name:$repoName)"`
+	}
+	err = github.Query(ctx, &q, map[string]interface{}{
+		"repoOwner":       githubv4.String(repoOwner),
+		"repoName":        githubv4.String(repoName),
+		"issueOrPrNumber": githubv4.Int(index),
+	})
+	if err != nil {
+		return nil, ErrIssueNotExist{0, repo.ID, index}
+	}
+	return &Issue{
+		ID:          index,
+		RepoID:      repo.ID,
+		Index:       index,
+		PosterID:    -1,
+		Poster:      user_model.NewGhostUser(),
+		CreatedUnix: timeutil.TimeStamp(q.Repository.IssueOrPullRequest.Issue.CreatedAt.Unix()),
+		UpdatedUnix: timeutil.TimeStamp(q.Repository.IssueOrPullRequest.Issue.UpdatedAt.Unix()),
+		ClosedUnix:  timeutil.TimeStamp(q.Repository.IssueOrPullRequest.Issue.ClosedAt.Unix()),
+		IsPull:      q.Repository.IssueOrPullRequest.Typename == "PullRequest",
+		Title:       string(q.Repository.IssueOrPullRequest.Issue.Title),
+	}, nil
 }
 
 // GetIssueByIndex returns raw issue without loading attributes by index in a repository.

@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 
+	"code.gitea.io/gitea/github"
 	"code.gitea.io/gitea/models/db"
 	git_model "code.gitea.io/gitea/models/git"
 	org_model "code.gitea.io/gitea/models/organization"
@@ -23,6 +24,7 @@ import (
 	"code.gitea.io/gitea/modules/setting"
 	"code.gitea.io/gitea/modules/timeutil"
 	"code.gitea.io/gitea/modules/util"
+	"github.com/shurcooL/githubv4"
 
 	"xorm.io/builder"
 )
@@ -656,6 +658,51 @@ func GetPullRequestByIssueIDWithNoAttributes(issueID int64) (*PullRequest, error
 		return nil, ErrPullRequestNotExist{0, issueID, 0, 0, "", ""}
 	}
 	return &pr, nil
+}
+
+func GetGithubPullRequestByIssue(ctx context.Context, issue *Issue) (*PullRequest, error) {
+	err := issue.LoadRepo(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	repoOwner, repoName, err := github.GetMirrorOwnerAndName(ctx, issue.Repo)
+	if err != nil {
+		return nil, err
+	}
+
+	var q struct {
+		Repository struct {
+			PullRequest struct {
+				Merged      githubv4.Boolean
+				MergedAt    githubv4.DateTime
+				BaseRefName githubv4.String
+				BaseRefOid  githubv4.String
+				HeadRefName githubv4.String
+				HeadRefOid  githubv4.String
+			} `graphql:"pullRequest(number:$number)"`
+		} `graphql:"repository(owner:$repoOwner,name:$repoName)"`
+	}
+	err = github.Query(ctx, &q, map[string]interface{}{
+		"repoOwner": githubv4.String(repoOwner),
+		"repoName":  githubv4.String(repoName),
+		"number":    githubv4.Int(issue.ID),
+	})
+	if err != nil {
+		return nil, ErrPullRequestNotExist{0, issue.ID, 0, 0, "", ""}
+	}
+
+	pr := &PullRequest{
+		IssueID:      issue.ID,
+		HasMerged:    bool(q.Repository.PullRequest.Merged),
+		MergedUnix:   timeutil.TimeStamp(q.Repository.PullRequest.MergedAt.Unix()),
+		HeadBranch:   string(q.Repository.PullRequest.HeadRefName),
+		HeadCommitID: string(q.Repository.PullRequest.HeadRefOid),
+		BaseRepoID:   issue.RepoID,
+		BaseBranch:   string(q.Repository.PullRequest.BaseRefName),
+		MergeBase:    string(q.Repository.PullRequest.BaseRefOid),
+	}
+	return pr, pr.LoadAttributes(ctx)
 }
 
 // GetPullRequestByIssueID returns pull request by given issue ID.

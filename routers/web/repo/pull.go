@@ -300,7 +300,12 @@ func ForkPost(ctx *context.Context) {
 }
 
 func getPullInfo(ctx *context.Context) (issue *issues_model.Issue, ok bool) {
-	issue, err := issues_model.GetIssueByIndex(ctx, ctx.Repo.Repository.ID, ctx.ParamsInt64(":index"))
+	var err error
+	if ctx.Repo.Repository.IsMirror {
+		issue, err = issues_model.GetGithubIssueByIndex(ctx, ctx.Repo.Repository, ctx.ParamsInt64(":index"))
+	} else {
+		issue, err = issues_model.GetIssueByIndex(ctx, ctx.Repo.Repository.ID, ctx.ParamsInt64(":index"))
+	}
 	if err != nil {
 		if issues_model.IsErrIssueNotExist(err) {
 			ctx.NotFound("GetIssueByIndex", err)
@@ -329,6 +334,7 @@ func getPullInfo(ctx *context.Context) (issue *issues_model.Issue, ok bool) {
 		ctx.ServerError("LoadPullRequest", err)
 		return nil, false
 	}
+	pull_service.UpdateRef(ctx, issue.PullRequest)
 
 	if err = issue.PullRequest.LoadHeadRepo(ctx); err != nil {
 		ctx.ServerError("LoadHeadRepo", err)
@@ -342,7 +348,6 @@ func getPullInfo(ctx *context.Context) (issue *issues_model.Issue, ok bool) {
 			return nil, false
 		}
 	}
-
 	return issue, true
 }
 
@@ -828,7 +833,7 @@ func viewPullFiles(ctx *context.Context, specifiedStartCommit, specifiedEndCommi
 	if ctx.Written() {
 		return
 	} else if prInfo == nil {
-		ctx.NotFound("ViewPullFiles", nil)
+		ctx.NotFound("ViewPullFiles", errors.New("prInfo is nil"))
 		return
 	}
 

@@ -456,7 +456,6 @@ func issueIDsFromSearch(ctx *context.Context, keyword string, opts *issues_model
 func Issues(ctx *context.Context) {
 	isPullList := ctx.Params(":type") == "pulls"
 	if isPullList {
-		MustAllowPulls(ctx)
 		if ctx.Written() {
 			return
 		}
@@ -1334,7 +1333,13 @@ func ViewIssue(ctx *context.Context) {
 		}
 	}
 
-	issue, err := issues_model.GetIssueByIndex(ctx, ctx.Repo.Repository.ID, ctx.ParamsInt64(":index"))
+	var issue *issues_model.Issue
+	var err error
+	if ctx.Repo.Repository.IsMirror {
+		issue, err = issues_model.GetGithubIssueByIndex(ctx, ctx.Repo.Repository, ctx.ParamsInt64(":index"))
+	} else {
+		issue, err = issues_model.GetIssueByIndex(ctx, ctx.Repo.Repository.ID, ctx.ParamsInt64(":index"))
+	}
 	if err != nil {
 		if issues_model.IsErrIssueNotExist(err) {
 			ctx.NotFound("GetIssueByIndex", err)
@@ -1357,7 +1362,6 @@ func ViewIssue(ctx *context.Context) {
 	}
 
 	if issue.IsPull {
-		MustAllowPulls(ctx)
 		if ctx.Written() {
 			return
 		}

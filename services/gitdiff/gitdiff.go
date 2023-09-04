@@ -47,6 +47,8 @@ const (
 	DiffLineAdd
 	DiffLineDel
 	DiffLineSection
+	DiffLineMovedAdd = 5
+	DiffLineMovedDel = 6
 )
 
 // DiffFileType represents the type of DiffFile.
@@ -112,6 +114,10 @@ func (d *DiffLine) GetHTMLDiffLineType() string {
 		return "del"
 	case DiffLineSection:
 		return "tag"
+	case DiffLineMovedAdd:
+		return "moved"
+	case DiffLineMovedDel:
+		return "moved"
 	}
 	return "same"
 }
@@ -212,11 +218,11 @@ func diffToHTML(lineWrapperTags []string, diffs []diffmatchpatch.Diff, lineType 
 		switch {
 		case diff.Type == diffmatchpatch.DiffEqual:
 			buf.WriteString(diff.Text)
-		case diff.Type == diffmatchpatch.DiffInsert && lineType == DiffLineAdd:
+		case diff.Type == diffmatchpatch.DiffInsert && (lineType == DiffLineAdd || lineType == DiffLineMovedAdd):
 			buf.Write(addedCodePrefix)
 			buf.WriteString(diff.Text)
 			buf.Write(codeTagSuffix)
-		case diff.Type == diffmatchpatch.DiffDelete && lineType == DiffLineDel:
+		case diff.Type == diffmatchpatch.DiffDelete && (lineType == DiffLineDel || lineType == DiffLineMovedDel):
 			buf.Write(removedCodePrefix)
 			buf.WriteString(diff.Text)
 			buf.Write(codeTagSuffix)
@@ -240,9 +246,9 @@ func (diffSection *DiffSection) GetLine(lineType DiffLineType, idx int) *DiffLin
 LOOP:
 	for _, diffLine := range diffSection.Lines {
 		switch diffLine.Type {
-		case DiffLineAdd:
+		case DiffLineAdd, DiffLineMovedAdd:
 			addCount++
-		case DiffLineDel:
+		case DiffLineDel, DiffLineMovedDel:
 			delCount++
 		default:
 			if matchDiffLine != nil {
@@ -254,11 +260,11 @@ LOOP:
 		}
 
 		switch lineType {
-		case DiffLineDel:
+		case DiffLineDel, DiffLineMovedDel:
 			if diffLine.RightIdx == 0 && diffLine.LeftIdx == idx-difference {
 				matchDiffLine = diffLine
 			}
-		case DiffLineAdd:
+		case DiffLineAdd, DiffLineMovedAdd:
 			if diffLine.LeftIdx == 0 && diffLine.RightIdx == idx+difference {
 				matchDiffLine = diffLine
 			}
@@ -317,14 +323,14 @@ func (diffSection *DiffSection) GetComputedInlineDiffFor(diffLine *DiffLine, loc
 	switch diffLine.Type {
 	case DiffLineSection:
 		return getLineContent(diffLine.Content[1:], locale)
-	case DiffLineAdd:
+	case DiffLineAdd, DiffLineMovedAdd:
 		compareDiffLine = diffSection.GetLine(DiffLineDel, diffLine.RightIdx)
 		if compareDiffLine == nil {
 			return DiffInlineWithHighlightCode(diffSection.FileName, language, diffLine.Content[1:], locale)
 		}
 		diff1 = compareDiffLine.Content
 		diff2 = diffLine.Content
-	case DiffLineDel:
+	case DiffLineDel, DiffLineMovedDel:
 		compareDiffLine = diffSection.GetLine(DiffLineAdd, diffLine.LeftIdx)
 		if compareDiffLine == nil {
 			return DiffInlineWithHighlightCode(diffSection.FileName, language, diffLine.Content[1:], locale)
@@ -1169,6 +1175,7 @@ func GetDiff(gitRepo *git.Repository, opts *DiffOptions, files ...string) (*Diff
 	if err != nil {
 		return nil, fmt.Errorf("unable to ParsePatch: %w", err)
 	}
+	markMovedLines(diff)
 	diff.Start = opts.SkipTo
 
 	checker, deferable := gitRepo.CheckAttributeReader(opts.AfterCommitID)
@@ -1395,4 +1402,49 @@ func GetWhitespaceFlag(whitespaceBehavior string) git.TrustedCmdArgs {
 	}
 	log.Warn("unknown whitespace behavior: %q, default to 'show-all'", whitespaceBehavior)
 	return nil
+}
+
+func markMovedLines(diff *Diff) {
+	var lines map[string][]*DiffLine = make(map[string][]*DiffLine)
+	for _, df := range diff.Files {
+		for _, ds := range df.Sections {
+			for _, dl := range ds.Lines {
+				switch dl.Type {
+				case DiffLineAdd, DiffLineDel:
+					text := dl.Content[1:]
+					lines[text] = append(lines[text], dl)
+				}
+			}
+		}
+	}
+	for _, dls := range lines {
+		if len(dls) == 2 {
+			if dls[0].delta()+dls[1].delta() == 0 {
+				dls[0].markMoved()
+				dls[1].markMoved()
+			}
+		}
+	}
+}
+
+func (dl *DiffLine) delta() int {
+	switch dl.Type {
+	case DiffLineAdd, DiffLineMovedAdd:
+		return 1
+	case DiffLineDel, DiffLineMovedDel:
+		return -1
+	default:
+		return 0
+	}
+}
+
+func (dl *DiffLine) markMoved() {
+	switch dl.Type {
+	case DiffLineAdd:
+		dl.Type = DiffLineMovedAdd
+	case DiffLineDel:
+		dl.Type = DiffLineMovedDel
+	default:
+		panic("cannot mark moved non-add/del line")
+	}
 }

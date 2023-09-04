@@ -871,6 +871,7 @@ func registerRoutes(m *web.Route) {
 	// ***** Release Attachment Download without Signin
 	m.Get("/{username}/{reponame}/releases/download/{vTag}/{fileName}", ignSignIn, context.RepoAssignment, repo.MustBeNotEmpty, repo.RedirectDownload)
 
+	// Settings
 	m.Group("/{username}/{reponame}", func() {
 		m.Group("/settings", func() {
 			m.Group("", func() {
@@ -965,6 +966,7 @@ func registerRoutes(m *web.Route) {
 	m.Post("/{username}/{reponame}/action/{action}", reqSignIn, context.RepoAssignment, context.UnitTypes(), repo.Action)
 
 	// Grouping for those endpoints not requiring authentication (but should respect ignSignIn)
+	// Milestone, Find, Compare, Issue/PR info
 	m.Group("/{username}/{reponame}", func() {
 		m.Group("/milestone", func() {
 			m.Get("/{id}", repo.MilestoneIssuesAndPulls)
@@ -987,6 +989,7 @@ func registerRoutes(m *web.Route) {
 	}, ignSignIn, context.RepoAssignment, context.UnitTypes()) // for "/{username}/{reponame}" which doesn't require authentication
 
 	// Grouping for those endpoints that do require authentication
+	// Issues, PRs, Comments, Markup, Labels, Milestones, Uploads, Branches
 	m.Group("/{username}/{reponame}", func() {
 		m.Group("/issues", func() {
 			m.Group("/new", func() {
@@ -1150,10 +1153,13 @@ func registerRoutes(m *web.Route) {
 		m.Get("/attachments/{uuid}", repo.GetAttachment)
 	}, ignSignIn, context.RepoAssignment, context.UnitTypes())
 
+	// Topics
 	m.Group("/{username}/{reponame}", func() {
 		m.Post("/topics", repo.TopicsPost)
 	}, context.RepoAssignment, context.RepoMustNotBeArchived(), reqRepoAdmin)
 
+	// Packages, Projects, Actions, Wiki, Activity, Archive, Branches, Media, Raw, Render,
+	// Commits, Merge, Cleanup, Files, Blame, RSS, Atom, Src
 	m.Group("/{username}/{reponame}", func() {
 		m.Group("", func() {
 			m.Get("/issues/posters", repo.IssuePosters) // it can't use {type:issues|pulls} because other routes like "/pulls/{index}" has higher priority
@@ -1307,7 +1313,7 @@ func registerRoutes(m *web.Route) {
 					m.Post("/submit", web.Bind(forms.SubmitReviewForm{}), repo.SubmitReview)
 				}, context.RepoMustNotBeArchived())
 			})
-		}, repo.MustAllowPulls)
+		})
 
 		m.Group("/media", func() {
 			m.Get("/branch/*", context.RepoRefByType(context.RepoRefBranch), repo.SingleDownloadOrLFS)
@@ -1374,12 +1380,14 @@ func registerRoutes(m *web.Route) {
 
 	m.Post("/{username}/{reponame}/lastcommit/*", ignSignInAndCsrf, context.RepoAssignment, context.UnitTypes(), context.RepoRefByType(context.RepoRefCommit), reqRepoCodeReader, repo.LastCommit)
 
+	// Stars, Watchers, Search
 	m.Group("/{username}/{reponame}", func() {
 		m.Get("/stars", repo.Stars)
 		m.Get("/watchers", repo.Watchers)
 		m.Get("/search", reqRepoCodeReader, repo.Search)
 	}, ignSignIn, context.RepoAssignment, context.RepoRef(), context.UnitTypes())
 
+	// LFS
 	m.Group("/{username}", func() {
 		m.Group("/{reponame}", func() {
 			m.Get("", repo.SetEditorconfigIfExists, repo.Home)
