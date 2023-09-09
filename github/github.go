@@ -14,7 +14,7 @@ import (
 )
 
 var client *githubv4.Client
-var ownerNameRegex *regexp.Regexp = regexp.MustCompile(`github.com/(\w+)/(\w+)\.git$`)
+var ownerNameRegex *regexp.Regexp = regexp.MustCompile(`github.com/([\w-_.]+)/([\w-_.]+)\.git$`)
 
 func init() {
 	token := oauth2.Token{AccessToken: os.Getenv("GH_TOKEN")}
