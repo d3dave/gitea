@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"regexp"
 
-	"code.gitea.io/gitea/github"
 	"code.gitea.io/gitea/models/db"
 	project_model "code.gitea.io/gitea/models/project"
 	repo_model "code.gitea.io/gitea/models/repo"
@@ -20,6 +19,7 @@ import (
 	api "code.gitea.io/gitea/modules/structs"
 	"code.gitea.io/gitea/modules/timeutil"
 	"code.gitea.io/gitea/modules/util"
+	"code.gitea.io/gitea/services/github"
 	"github.com/shurcooL/githubv4"
 
 	"xorm.io/builder"

@@ -51,7 +51,7 @@
     - [Previous TOC/owners members](#previous-tocowners-members)
   - [Governance Compensation](#governance-compensation)
   - [TOC \& Working groups](#toc--working-groups)
-  - [Roadmap](#roadmap)
+  - [Roadmap](#roadmap) 
   - [Versions](#versions)
   - [Releasing Gitea](#releasing-gitea)
 

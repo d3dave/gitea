@@ -13,6 +13,7 @@ import (
 	"html/template"
 	"io"
 	"net/url"
+	"os"
 	"sort"
 	"strings"
 	"time"
@@ -323,14 +324,14 @@ func (diffSection *DiffSection) GetComputedInlineDiffFor(diffLine *DiffLine, loc
 	switch diffLine.Type {
 	case DiffLineSection:
 		return getLineContent(diffLine.Content[1:], locale)
-	case DiffLineAdd, DiffLineMovedAdd:
+	case DiffLineAdd:
 		compareDiffLine = diffSection.GetLine(DiffLineDel, diffLine.RightIdx)
 		if compareDiffLine == nil {
 			return DiffInlineWithHighlightCode(diffSection.FileName, language, diffLine.Content[1:], locale)
 		}
 		diff1 = compareDiffLine.Content
 		diff2 = diffLine.Content
-	case DiffLineDel, DiffLineMovedDel:
+	case DiffLineDel:
 		compareDiffLine = diffSection.GetLine(DiffLineAdd, diffLine.LeftIdx)
 		if compareDiffLine == nil {
 			return DiffInlineWithHighlightCode(diffSection.FileName, language, diffLine.Content[1:], locale)
@@ -1109,10 +1110,7 @@ type DiffOptions struct {
 	DirectComparison   bool
 }
 
-// GetDiff builds a Diff between two commits of a repository.
-// Passing the empty string as beforeCommitID returns a diff from the parent commit.
-// The whitespaceBehavior is either an empty string or a git flag
-func GetDiff(gitRepo *git.Repository, opts *DiffOptions, files ...string) (*Diff, error) {
+func getGitDiff(gitRepo *git.Repository, opts *DiffOptions, files ...string) (*Diff, error) {
 	repoPath := gitRepo.Path
 
 	commit, err := gitRepo.GetCommit(opts.AfterCommitID)
@@ -1175,6 +1173,30 @@ func GetDiff(gitRepo *git.Repository, opts *DiffOptions, files ...string) (*Diff
 	if err != nil {
 		return nil, fmt.Errorf("unable to ParsePatch: %w", err)
 	}
+
+	return diff, nil
+}
+
+// GetDiff builds a Diff between two commits of a repository.
+// Passing the empty string as beforeCommitID returns a diff from the parent commit.
+// The whitespaceBehavior is either an empty string or a git flag
+func GetDiff(gitRepo *git.Repository, opts *DiffOptions, files ...string) (*Diff, error) {
+	var err error
+	var diff *Diff
+
+	diffEngine := os.Getenv("DIFF_ENGINE")
+	switch diffEngine {
+	case "git":
+		diff, err = getGitDiff(gitRepo, opts, files...)
+	case "difft":
+		diff, err = getDifft(gitRepo, opts, files...)
+	case "mydt":
+		diff, err = getGitDiffSpecial(gitRepo, opts, files...)
+	}
+	if err != nil {
+		return nil, err
+	}
+
 	markMovedLines(diff)
 	diff.Start = opts.SkipTo
 
@@ -1234,6 +1256,7 @@ func GetDiff(gitRepo *git.Repository, opts *DiffOptions, files ...string) (*Diff
 	if len(opts.BeforeCommitID) == 0 || opts.BeforeCommitID == git.EmptySHA {
 		diffPaths = []string{git.EmptyTreeSHA, opts.AfterCommitID}
 	}
+	repoPath := gitRepo.Path
 	diff.NumFiles, diff.TotalAddition, diff.TotalDeletion, err = git.GetDiffShortStat(gitRepo.Ctx, repoPath, nil, diffPaths...)
 	if err != nil && strings.Contains(err.Error(), "no merge base") {
 		// git >= 2.28 now returns an error if base and head have become unrelated.

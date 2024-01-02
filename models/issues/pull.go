@@ -12,7 +12,6 @@ import (
 	"strconv"
 	"strings"
 
-	"code.gitea.io/gitea/github"
 	"code.gitea.io/gitea/models/db"
 	git_model "code.gitea.io/gitea/models/git"
 	org_model "code.gitea.io/gitea/models/organization"
@@ -24,6 +23,7 @@ import (
 	"code.gitea.io/gitea/modules/setting"
 	"code.gitea.io/gitea/modules/timeutil"
 	"code.gitea.io/gitea/modules/util"
+	"code.gitea.io/gitea/services/github"
 	"github.com/shurcooL/githubv4"
 
 	"xorm.io/builder"

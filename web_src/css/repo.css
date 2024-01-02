@@ -3041,6 +3041,14 @@ tbody.commit-list {
   background: var(--color-diff-added-word-bg);
 }
 
+.code-diff-unified .moved-code,
+.code-diff-unified .moved-code td,
+.code-diff-split .moved-code,
+.code-diff-split .moved-code td {
+  background: var(--color-diff-moved-row-bg);
+  border-color: var(--color-diff-moved-row-border);
+}
+
 .code-diff-unified .del-code,
 .code-diff-unified .del-code td,
 .code-diff-split .del-code .lines-num-old,
@@ -3074,12 +3082,6 @@ tbody.commit-list {
 .code-diff-split .add-code .lines-type-marker-old,
 .code-diff-split .add-code .lines-code-old {
   background: var(--color-diff-inactive);
-}
-
-.moved-code,
-.moved-code td {
-  background: var(--color-diff-moved-row-bg);
-  border-color: var(--color-diff-moved-row-border);
 }
 
 .code-diff-split tbody tr td:nth-child(5),
